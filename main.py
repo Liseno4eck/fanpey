@@ -14,7 +14,7 @@ VK_TOKEN = os.environ.get("VK_TOKEN", "").strip()
 ADMIN_VK_ID = int(os.environ.get("ADMIN_VK_ID", "0") or 0)
 STATE_FILE = "states.json"
 
-print("Длина ключа:", len(GOLDEN_KEY), "(должно быть 32)")
+print("Длина ключа:", len(GOLDEN_KEY), "(должно быть 32)", flush=True)
 if len(GOLDEN_KEY) != 32:
     raise SystemExit("golden_key неверный: нужно значение куки golden_key ровно из 32 символов")
 
@@ -65,13 +65,14 @@ def notify_admin(text):
             random_id=random.randint(1, 2**31),
             message=text,
         )
+        print("Сообщение отправлено в ВК", flush=True)
     except Exception as e:
-        print("Ошибка отправки в ВК:", e)
+        print("Ошибка отправки в ВК:", e, flush=True)
 
 # ===== FUNPAY =====
 acc = Account(GOLDEN_KEY).get()
 runner = Runner(acc)  # создаётся ОДИН раз
-print(f"Бот запущен как {acc.username}")
+print(f"Бот запущен как {acc.username}", flush=True)
 
 def handle_message(msg):
     chat_id = str(msg.chat_id)
@@ -80,6 +81,8 @@ def handle_message(msg):
     chat_link = f"https://funpay.com/chat/?node={msg.chat_id}"
     text = (msg.text or "").strip()
     low = text.lower()
+
+    print(f"Сообщение от {msg.author_id} в чате {chat_id}: {text[:50]}", flush=True)
 
     # Вызов продавца
     if low.startswith("+позвать продавца"):
@@ -92,6 +95,7 @@ def handle_message(msg):
         states[chat_id] = 1
         save_states(states)
         acc.send_message(msg.chat_id, MSG_1)
+        print("Отправлено приветствие", flush=True)
         return
 
     stage = states[chat_id]
@@ -128,6 +132,7 @@ while True:
     try:
         for event in get_events():
             fails = 0
+            print("СОБЫТИЕ:", event.type, flush=True)
             if event.type != EventTypes.NEW_MESSAGE:
                 continue
             msg = event.message
@@ -136,17 +141,17 @@ while True:
             try:
                 handle_message(msg)
             except Exception:
-                print("❌ Ошибка в обработке сообщения:")
+                print("❌ Ошибка в обработке сообщения:", flush=True)
                 traceback.print_exc()
     except Exception:
         fails += 1
-        print(f"❌ Ошибка получения событий (попытка {fails}):")
+        print(f"❌ Ошибка получения событий (попытка {fails}):", flush=True)
         traceback.print_exc()
         if fails >= 5:
-            print("Слишком много ошибок подряд, остановка.")
+            print("Слишком много ошибок подряд, остановка.", flush=True)
             break
         time.sleep(15)
         try:
-            acc.get()  # обновляем сессию и csrf-токен, Runner не пересоздаём
+            acc.get()  # обновляем сессию, Runner не пересоздаём
         except Exception:
             traceback.print_exc()
