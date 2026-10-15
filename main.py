@@ -8,8 +8,8 @@ from FunPayAPI import Account, Runner
 from FunPayAPI.updater.events import EventTypes
 
 # ===== НАСТРОЙКИ =====
-GOLDEN_KEY = os.environ["GOLDEN_KEY"]
-VK_TOKEN = os.environ["VK_TOKEN"]
+GOLDEN_KEY = os.environ["GOLDEN_KEY"].strip()
+VK_TOKEN = os.environ["VK_TOKEN"].strip()
 ADMIN_VK_ID = int(os.environ["ADMIN_VK_ID"])
 STATE_FILE = "states.json"
 
