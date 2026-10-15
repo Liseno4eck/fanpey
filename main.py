@@ -2,18 +2,23 @@ import json
 import os
 import random
 import time
+import traceback
 
 import vk_api
 from FunPayAPI import Account, Runner
 from FunPayAPI.updater.events import EventTypes
 
 # ===== НАСТРОЙКИ =====
-GOLDEN_KEY = os.environ["GOLDEN_KEY"].strip()
-VK_TOKEN = os.environ["VK_TOKEN"].strip()
-ADMIN_VK_ID = int(os.environ["ADMIN_VK_ID"])
+# Берутся из секретов/переменных окружения.
+# Для Pterodactyl можно вписать значения прямо вместо пустых кавычек.
+GOLDEN_KEY = os.environ.get("GOLDEN_KEY", "").strip()
+VK_TOKEN = os.environ.get("VK_TOKEN", "").strip()
+ADMIN_VK_ID = int(os.environ.get("ADMIN_VK_ID", "0") or 0)
 STATE_FILE = "states.json"
 
-print("Длина ключа:", len(GOLDEN_KEY))
+print("Длина ключа:", len(GOLDEN_KEY), "(должно быть 32)")
+if len(GOLDEN_KEY) != 32:
+    raise SystemExit("golden_key неверный: нужно значение куки golden_key ровно из 32 символов")
 
 # ===== ТЕКСТЫ =====
 MSG_1 = (
@@ -39,8 +44,11 @@ MSG_3 = (
 # ===== СОСТОЯНИЯ =====
 def load_states():
     if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
     return {}
 
 def save_states(states):
@@ -69,7 +77,7 @@ print(f"Бот запущен как {acc.username}")
 
 def handle_message(msg):
     chat_id = str(msg.chat_id)
-    user_name = msg.chat_name or "Пользователь"
+    user_name = getattr(msg, "chat_name", None) or getattr(msg, "author", None) or "Пользователь"
     user_link = f"https://funpay.com/users/{msg.author_id}/"
     chat_link = f"https://funpay.com/chat/?node={msg.chat_id}"
     text = (msg.text or "").strip()
@@ -111,25 +119,38 @@ def handle_message(msg):
             acc.send_message(msg.chat_id, "Сообщение передано продавцу ✅")
 
 # ===== ГЛАВНЫЙ ЦИКЛ =====
+def get_events():
+    # Пробуем показать настоящие ошибки; если версия не поддерживает параметр, запускаем без него
+    try:
+        return runner.listen(requests_delay=6, ignore_exceptions=False)
+    except TypeError:
+        return runner.listen(requests_delay=6)
+
+fails = 0
 while True:
     try:
-    runner.get_updates()
-    print("Запрос событий прошёл ✅")
-except Exception as e:
-    print("Реальная ошибка:", type(e).__name__, str(e)[:300])
-    try:
-        for event in runner.listen(requests_delay=4):
+        for event in get_events():
+            fails = 0
             if event.type != EventTypes.NEW_MESSAGE:
                 continue
             msg = event.message
-            if msg.author_id == acc.id or msg.author_id == 0 or msg.by_bot:
+            if msg.author_id == acc.id or msg.author_id == 0 or getattr(msg, "by_bot", False):
                 continue  # свои и системные сообщения пропускаем
-            handle_message(msg)
-    except Exception as e:
-        print("Ошибка, перезапуск через 10 сек:", e)
-        time.sleep(10)
+            try:
+                handle_message(msg)
+            except Exception:
+                print("❌ Ошибка в обработке сообщения:")
+                traceback.print_exc()
+    except Exception:
+        fails += 1
+        print(f"❌ Реальная ошибка (попытка {fails}):")
+        traceback.print_exc()
+        if fails >= 5:
+            print("Слишком много ошибок подряд, остановка.")
+            break
+        time.sleep(15)
         try:
             acc.get()
             runner = Runner(acc)
-        except Exception as e2:
-            print("Не удалось обновить сессию:", e2)
+        except Exception:
+            traceback.print_exc()
