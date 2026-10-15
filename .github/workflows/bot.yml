@@ -1,9 +1,9 @@
 name: FunPay bot
 
 on:
-  workflow_dispatch:        # ручной запуск
+  workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *"   # перезапуск каждые 6 часов
+    - cron: "0 */6 * * *"
 
 concurrency:
   group: funpay-bot
@@ -19,8 +19,9 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
-      - run: python main.py
+      - run: python -u main.py
         env:
+          PYTHONUNBUFFERED: "1"
           GOLDEN_KEY: ${{ secrets.GOLDEN_KEY }}
           VK_TOKEN: ${{ secrets.VK_TOKEN }}
           ADMIN_VK_ID: ${{ secrets.ADMIN_VK_ID }}
