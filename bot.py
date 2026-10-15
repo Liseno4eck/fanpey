@@ -8,9 +8,9 @@ from FunPayAPI import Account, Runner
 from FunPayAPI.updater.events import EventTypes
 
 # ===== НАСТРОЙКИ =====
-GOLDEN_KEY = "v1.6d57ec1d80de8d249f76452b2de91ace144ace2d9fc8f8de1135807704a5d286.3c61f93daf390d7c4ab855e32ad54902.1792677695.k1.03dbc36ad89b0d64de51797fd1849f3c416d3f34b0efdeeb703ebf83cabb7cf2"
-VK_TOKEN = "vk1.a.bh7sxx4bOc4oMKyzy1DGTlDzOT3qfOGQvB_lPDNZs5-kjmWD3YgY86XWT5nUzB30i_z8qPk1DdL7fYpGBPSwwoehKSfRdHV18MVFP2ttxIF-w0eQHF45p_IWxY1tjyDAcGi7WK_B5f_82WyrJfeKseJIPrwArE7ONifEm-5FJ9-7qlj2pVEBTxJ8ZCkk0RNoXJl5b5YIdXpWem711726WA"   # с правом на сообщения
-ADMIN_VK_ID = 875762552            # твой VK ID (цифрами)
+GOLDEN_KEY = os.environ["GOLDEN_KEY"]
+VK_TOKEN = os.environ["VK_TOKEN"]
+ADMIN_VK_ID = int(os.environ["ADMIN_VK_ID"])
 STATE_FILE = "states.json"
 
 # ===== ТЕКСТЫ =====
