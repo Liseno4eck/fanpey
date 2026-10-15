@@ -1,0 +1,26 @@
+name: FunPay bot
+
+on:
+  workflow_dispatch:        # ручной запуск
+  schedule:
+    - cron: "0 */6 * * *"   # перезапуск каждые 6 часов
+
+concurrency:
+  group: funpay-bot
+  cancel-in-progress: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python main.py
+        env:
+          GOLDEN_KEY: ${{ secrets.GOLDEN_KEY }}
+          VK_TOKEN: ${{ secrets.VK_TOKEN }}
+          ADMIN_VK_ID: ${{ secrets.ADMIN_VK_ID }}
