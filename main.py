@@ -9,8 +9,6 @@ from FunPayAPI import Account, Runner
 from FunPayAPI.updater.events import EventTypes
 
 # ===== НАСТРОЙКИ =====
-# Берутся из секретов/переменных окружения.
-# Для Pterodactyl можно вписать значения прямо вместо пустых кавычек.
 GOLDEN_KEY = os.environ.get("GOLDEN_KEY", "").strip()
 VK_TOKEN = os.environ.get("VK_TOKEN", "").strip()
 ADMIN_VK_ID = int(os.environ.get("ADMIN_VK_ID", "0") or 0)
@@ -72,7 +70,7 @@ def notify_admin(text):
 
 # ===== FUNPAY =====
 acc = Account(GOLDEN_KEY).get()
-runner = Runner(acc)
+runner = Runner(acc)  # создаётся ОДИН раз
 print(f"Бот запущен как {acc.username}")
 
 def handle_message(msg):
@@ -120,7 +118,6 @@ def handle_message(msg):
 
 # ===== ГЛАВНЫЙ ЦИКЛ =====
 def get_events():
-    # Пробуем показать настоящие ошибки; если версия не поддерживает параметр, запускаем без него
     try:
         return runner.listen(requests_delay=6, ignore_exceptions=False)
     except TypeError:
@@ -135,7 +132,7 @@ while True:
                 continue
             msg = event.message
             if msg.author_id == acc.id or msg.author_id == 0 or getattr(msg, "by_bot", False):
-                continue  # свои и системные сообщения пропускаем
+                continue
             try:
                 handle_message(msg)
             except Exception:
@@ -143,14 +140,13 @@ while True:
                 traceback.print_exc()
     except Exception:
         fails += 1
-        print(f"❌ Реальная ошибка (попытка {fails}):")
+        print(f"❌ Ошибка получения событий (попытка {fails}):")
         traceback.print_exc()
         if fails >= 5:
             print("Слишком много ошибок подряд, остановка.")
             break
         time.sleep(15)
         try:
-            acc.get()
-            runner = Runner(acc)
+            acc.get()  # обновляем сессию и csrf-токен, Runner не пересоздаём
         except Exception:
             traceback.print_exc()
