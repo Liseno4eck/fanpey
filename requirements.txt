@@ -1,2 +1,4 @@
-FunPayAPI
 vk_api
+requests
+beautifulsoup4
+requests_toolbelt
