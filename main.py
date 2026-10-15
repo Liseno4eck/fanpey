@@ -113,6 +113,11 @@ def handle_message(msg):
 # ===== ГЛАВНЫЙ ЦИКЛ =====
 while True:
     try:
+    runner.get_updates()
+    print("Запрос событий прошёл ✅")
+except Exception as e:
+    print("Реальная ошибка:", type(e).__name__, str(e)[:300])
+    try:
         for event in runner.listen(requests_delay=4):
             if event.type != EventTypes.NEW_MESSAGE:
                 continue
