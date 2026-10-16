@@ -3,6 +3,7 @@ import os
 import random
 import time
 import traceback
+from types import SimpleNamespace
 
 import vk_api
 from FunPayAPI import Account, Runner
@@ -13,6 +14,7 @@ GOLDEN_KEY = os.environ.get("GOLDEN_KEY", "").strip()
 VK_TOKEN = os.environ.get("VK_TOKEN", "").strip()
 ADMIN_VK_ID = int(os.environ.get("ADMIN_VK_ID", "0") or 0)
 STATE_FILE = "states.json"
+WARMUP_SECONDS = 25  # после старта не отвечаем в уже существующих чатах
 
 print("Длина ключа:", len(GOLDEN_KEY), "(должно быть 32)", flush=True)
 if len(GOLDEN_KEY) != 32:
@@ -70,32 +72,49 @@ def notify_admin(text):
         print("Ошибка отправки в ВК:", e, flush=True)
 
 # ===== FUNPAY =====
-acc = Account(GOLDEN_KEY).get()
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+try:
+    acc = Account(GOLDEN_KEY, user_agent=USER_AGENT).get()
+except TypeError:
+    acc = Account(GOLDEN_KEY).get()
+
 runner = Runner(acc)  # создаётся ОДИН раз
 print(f"Бот запущен как {acc.username}", flush=True)
+START_TIME = time.time()
+
+def send(chat_id, text, chat_name=None):
+    try:
+        acc.send_message(chat_id, text, chat_name=chat_name)
+    except TypeError:
+        acc.send_message(chat_id, text)
+    print(f"Отправлено в чат {chat_id}: {text[:40]}...", flush=True)
 
 def handle_message(msg):
     chat_id = str(msg.chat_id)
-    user_name = getattr(msg, "chat_name", None) or getattr(msg, "author", None) or "Пользователь"
-    user_link = f"https://funpay.com/users/{msg.author_id}/"
+    chat_name = getattr(msg, "chat_name", None)
+    user_name = chat_name or getattr(msg, "author", None) or "Пользователь"
+    author_id = getattr(msg, "author_id", 0) or 0
+    user_link = f"https://funpay.com/users/{author_id}/" if author_id else "(ссылка неизвестна)"
     chat_link = f"https://funpay.com/chat/?node={msg.chat_id}"
     text = (msg.text or "").strip()
     low = text.lower()
 
-    print(f"Сообщение от {msg.author_id} в чате {chat_id}: {text[:50]}", flush=True)
+    print(f"Сообщение в чате {chat_id} от {author_id}: {text[:50]}", flush=True)
 
     # Вызов продавца
     if low.startswith("+позвать продавца"):
         notify_admin(f"🔔 Юзер вас вызвал!\n👤 {user_name} ({user_link})\n💬 Чат: {chat_link}")
-        acc.send_message(msg.chat_id, "Продавец вызван, скоро с вами свяжутся ✅")
+        send(msg.chat_id, "Продавец вызван, скоро с вами свяжутся ✅", chat_name)
         return
 
     # Новый чат: приветствие
     if chat_id not in states:
         states[chat_id] = 1
         save_states(states)
-        acc.send_message(msg.chat_id, MSG_1)
-        print("Отправлено приветствие", flush=True)
+        send(msg.chat_id, MSG_1, chat_name)
         return
 
     stage = states[chat_id]
@@ -104,7 +123,7 @@ def handle_message(msg):
     if low.startswith("+ответ"):
         answer = text[len("+ответ"):].strip()
         if not answer:
-            acc.send_message(msg.chat_id, "Напишите сообщение после команды: +ответ (ваше сообщение)")
+            send(msg.chat_id, "Напишите сообщение после команды: +ответ (ваше сообщение)", chat_name)
             return
 
         notify_admin(f"📩 Ответ от юзера\n👤 {user_name} ({user_link})\n💬 Чат: {chat_link}\n\n{answer}")
@@ -112,13 +131,13 @@ def handle_message(msg):
         if stage == 1:
             states[chat_id] = 2
             save_states(states)
-            acc.send_message(msg.chat_id, MSG_2)
+            send(msg.chat_id, MSG_2, chat_name)
         elif stage == 2:
             states[chat_id] = 3
             save_states(states)
-            acc.send_message(msg.chat_id, MSG_3)
+            send(msg.chat_id, MSG_3, chat_name)
         else:
-            acc.send_message(msg.chat_id, "Сообщение передано продавцу ✅")
+            send(msg.chat_id, "Сообщение передано продавцу ✅", chat_name)
 
 # ===== ГЛАВНЫЙ ЦИКЛ =====
 def get_events():
@@ -127,22 +146,44 @@ def get_events():
     except TypeError:
         return runner.listen(requests_delay=6)
 
+INITIAL_CHAT = getattr(EventTypes, "INITIAL_CHAT", None)
+
 fails = 0
 while True:
     try:
         for event in get_events():
             fails = 0
             print("СОБЫТИЕ:", event.type, flush=True)
-            if event.type != EventTypes.NEW_MESSAGE:
-                continue
-            msg = event.message
-            if msg.author_id == acc.id or msg.author_id == 0 or getattr(msg, "by_bot", False):
-                continue
-            try:
-                handle_message(msg)
-            except Exception:
-                print("❌ Ошибка в обработке сообщения:", flush=True)
-                traceback.print_exc()
+
+            # Обычное новое сообщение
+            if event.type == EventTypes.NEW_MESSAGE:
+                msg = event.message
+                if msg.author_id == acc.id or msg.author_id == 0 or getattr(msg, "by_bot", False):
+                    continue
+                try:
+                    handle_message(msg)
+                except Exception:
+                    print("❌ Ошибка в обработке сообщения:", flush=True)
+                    traceback.print_exc()
+
+            # Новый чат (первое сообщение от нового покупателя)
+            elif INITIAL_CHAT is not None and event.type == INITIAL_CHAT:
+                if time.time() - START_TIME < WARMUP_SECONDS:
+                    continue  # старые чаты при запуске пропускаем
+                chat = event.chat
+                if not getattr(chat, "unread", False):
+                    continue  # последнее сообщение наше или уже прочитано
+                try:
+                    handle_message(SimpleNamespace(
+                        chat_id=chat.id,
+                        chat_name=getattr(chat, "name", None),
+                        author_id=getattr(chat, "interlocutor_id", 0) or 0,
+                        text=getattr(chat, "last_message_text", "") or "",
+                        by_bot=False,
+                    ))
+                except Exception:
+                    print("❌ Ошибка в обработке нового чата:", flush=True)
+                    traceback.print_exc()
     except Exception:
         fails += 1
         print(f"❌ Ошибка получения событий (попытка {fails}):", flush=True)
